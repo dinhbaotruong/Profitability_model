@@ -1,0 +1,279 @@
+rm(list = ls())
+setwd()#change according to your data location
+
+Full.eco<-read.csv2("Full.eco23920 add flock info.csv",sep=",", na.strings = " ", header=TRUE)
+library(tidyverse)
+library(dplyr)
+names(Full.eco)
+df1<-Full.eco %>% select(Farm,FLOCKCODE,DISTRICT,SEX,AGE,WORKERNO.x,experience,EDLEVEL,
+                         CHICKENTOTAL, Week_raising,feed_plus_ofeed, 
+                         feedpricec_kg,X.week_with_medical_feed,per_week_anti,
+                         num_anti_used,DOC.FLOCK,numbersellsum,type.vaccine.use,
+                         mortality.y,morta_end,Otherflock_class,Other_animal_class,
+                         ave_body_weight,Revenue.flock,ROI.flock,GPM.flock,
+                         Ocost.COST.FLOCK,average_ADDkg_per.1000.chicken_week,
+                         num_week_anti)
+
+
+
+df1<- df1 %>% 
+  mutate_at(vars(AGE,WORKERNO.x,experience,
+                 CHICKENTOTAL, Week_raising,feed_plus_ofeed, 
+                 feedpricec_kg,X.week_with_medical_feed,per_week_anti,
+                 mortality.y,num_anti_used,type.vaccine.use,Otherflock_class,
+                 Other_animal_class,ave_body_weight,Revenue.flock,
+                 ROI.flock,GPM.flock, DOC.FLOCK,numbersellsum,
+                 Ocost.COST.FLOCK,morta_end,average_ADDkg_per.1000.chicken_week,
+                 num_week_anti), ~as.numeric(as.character(.)))
+#df1<-Full.eco %>% select(Farm,FLOCKCODE,ROI.flock,CHICKENTOTAL,
+#                         average_ADDkg_per.1000.chicken_week,
+#                         Week_raising,
+#                         DOC.FLOCK, numbersellsum,
+#                         mortality.y)
+#colnames(df1) <- c("FarmID","FlockID","ROI_per","Flock_size","ave_ADDkg_per_1000_chickens",
+#                   "Week_raising","DOC_flock","chicken_sold","Cum_mort") # tao ten moi cho hai bien                         
+
+#df1<- df1 %>% 
+#  mutate_at(vars(ROI_per,Flock_size,
+#                 ave_ADDkg_per_1000_chickens,
+#                 Week_raising,DOC_flock, chicken_sold,
+#                 Cum_mort), ~as.numeric(as.character(.)))
+summary(df1)
+#transforme data for multi model
+df1$ROI.flock.modi<-df1$ROI.flock+1#create new variables for ROI so we are able to use sqrt of this value
+df1[is.na(df1$numbersellsum),]$numbersellsum <- 1
+df1$DOC_price<-round(df1$DOC.FLOCK/df1$CHICKENTOTAL, digits = 0)
+df1$DOC_price_106VND<-df1$DOC_price/1000000
+df1$Flock_size_per100<-df1$CHICKENTOTAL/100#to get a bigger coefficient
+
+df1$month_raising<-df1$Week_raising/4#to get a bigger coefficient
+df1$average_ADDkg_per.100.chicken_week_modi<-(df1$average_ADDkg_per.1000.chicken_week*10)+1
+df1$sqrt_ADD_kg<-sqrt(df1$average_ADDkg_per.100.chicken_week_modi)
+
+#Correlation bt variables
+#DOC price and cum. mortality
+model_1a<-lmer(df1$DOC_price ~ (1|Farm)+df1$mortality.y,data = df1, REML=0)# significant
+summary(model_1a)
+cor(df1$DOC_price,df1$mortality.y)# calculate Pearson's correlation coefficient
+#DOC price and week raising
+model_2a<-lmer(df1$DOC_price ~ (1|Farm)+df1$Week_raising,data = df1, REML=0)# significant
+summary(model_2a)
+cor(df1$DOC_price,df1$Week_raising)
+#3_DOC cost and average body weight
+df1[is.na(df1$ave_body_weight),]$ave_body_weight <- 1.5 #replaced by median value
+model_3<-lmer(df1$DOC_price ~ (1|Farm)+df1$ave_body_weight,data = df1, REML=0)# non significant
+summary(model_3)
+cor(df1$DOC_price,df1$ave_body_weight)
+#4_average_ADDkg_per.1000.chicken_week and number of chicken purchased,
+model_4<-lmer(df1$average_ADDkg_per.1000.chicken_week ~ (1|Farm)+df1$CHICKENTOTAL,
+              data = df1, REML = 0)
+summary(model_4)
+cor(df1$average_ADDkg_per.1000.chicken_week,df1$CHICKENTOTAL)
+#Correlation plot
+# Correlation plot
+#correlation plot for publication
+#Transform data for analysis
+df1$CL<-ifelse(df1$DISTRICT=="Cao Lanh",1,0)
+
+df1$F<-ifelse(df1$SEX=="F",1,0)
+
+summary(df1$AGE)
+df1$AGE.OLD<-ifelse(df1$AGE<median(df1$AGE),1,0)
+
+df1$WORKER.High<-ifelse(df1$WORKERNO.x>1,1,0)
+
+df1$experience.High<-ifelse(df1$experience>median(df1$experience),1,0)
+table(df1$EDLEVEL)
+table(df1$edu.1)
+df1$edu.1<-ifelse(df1$EDLEVEL=="PrimarySchool",1,0)
+df1$edu.2<-ifelse(df1$EDLEVEL=="SecondarySchool",1,0)
+df1$edu.3<-ifelse(df1$EDLEVEL=="HighSchool",1,0)
+df1$edu.4<-ifelse(df1$EDLEVEL=="PostHighSchool",1,0)
+df1$edu.class<-ifelse(df1$EDLEVEL=="PostHighSchool",1,
+                      ifelse(df1$EDLEVEL=="SecondarySchool",2,
+                             ifelse(df1$EDLEVEL=="HighSchool",3,4)))
+df1$scale.big<-ifelse(df1$CHICKENTOTAL>median(df1$CHICKENTOTAL),1,0)
+
+summary(df1$Week_raising)
+df1$Week_raising.High<-ifelse(df1$Week_raising>18,1,0)
+
+#Feed type used: only commercial feed or combined with locally-sourced feed. Done 
+#Feed price
+#df1$feed.high<-ifelse(df1$feedpricec_kg>median(df1$feedpricec_kg),1,0)
+
+
+#Number of antibiotic using
+summary(df1$num_anti_used)
+df1$num_anti_used_high<-ifelse(df1$num_anti_used>median(df1$num_anti_used),1,0)
+
+#number of pathogen vaccinated
+summary(df1$type.vaccine.use)
+df1$vac.high<-ifelse(df1$type.vaccine.use>median(df1$type.vaccine.use),1,0)
+#New purchansing
+df1[is.na(df1$Ocost.COST.FLOCK),]$Ocost.COST.FLOCK <- 0
+df1$new.purchase<-ifelse(df1$Ocost.COST.FLOCK==0|is.na(df1$Ocost.COST.FLOCK),0,1)
+cor1<-df1[,c("F","AGE","WORKERNO.x","experience","edu.class","CHICKENTOTAL",
+             "Week_raising","feed_plus_ofeed","feedpricec_kg","X.week_with_medical_feed",
+             "average_ADDkg_per.1000.chicken_week","DOC_price","mortality.y",
+             "type.vaccine.use","Otherflock_class",
+             "Other_animal_class","ave_body_weight","new.purchase")]
+#names(cor1)[names(cor1)=="CL"]<-"dis"
+names(cor1)[names(cor1)=="F"]<-"sex"
+names(cor1)[names(cor1)=="AGE"]<-"age"
+names(cor1)[names(cor1)=="WORKERNO.x"]<-"nwo"
+names(cor1)[names(cor1)=="experience"]<-"exp"
+names(cor1)[names(cor1)=="edu.class"]<-"edu"
+names(cor1)[names(cor1)=="CHICKENTOTAL"]<-"siz"
+names(cor1)[names(cor1)=="Week_raising"]<-"dur"
+names(cor1)[names(cor1)=="feed_plus_ofeed"]<-"ofd"
+names(cor1)[names(cor1)=="feedpricec_kg"]<-"prf"
+names(cor1)[names(cor1)=="X.week_with_medical_feed"]<-"wmf"
+names(cor1)[names(cor1)=="average_ADDkg_per.1000.chicken_week"]<-"add"
+#names(cor1)[names(cor1)=="num_anti_used"]<-"nau"
+names(cor1)[names(cor1)=="DOC_price"]<-"doc"
+names(cor1)[names(cor1)=="mortality.y"]<-"cmt"
+#names(cor1)[names(cor1)=="morta_end"]<-"lmt"#LATE MORTALITY
+names(cor1)[names(cor1)=="type.vaccine.use"]<-"nva"
+names(cor1)[names(cor1)=="Otherflock_class"]<-"ofl"
+names(cor1)[names(cor1)=="Other_animal_class"]<-"oan"
+names(cor1)[names(cor1)=="ave_body_weight"]<-"bwt"
+names(cor1)[names(cor1)=="new.purchase"]<-"pce"
+
+library(GGally)
+x11()
+ggcorr(cor1, palette = "RdBu", label = TRUE, digits = 3)# simple solution
+
+
+##Factor influencing profitability
+library(lme4)                  # mixed effects models
+library(geepack); library(gee) # two  packages for fitting gee models
+library(readxl)
+library(lmerTest)
+summary(df1$ROI.flock.modi)
+model_B<-lmer(sqrt(df1$ROI.flock.modi) ~ (1|Farm)+F,data = df1, REML=0)# non
+summary(model_B)
+
+model_C<-lmer(sqrt(df1$ROI.flock.modi) ~ (1|Farm)+df1$AGE,data = df1, REML=0)# significant
+summary(model_C)
+
+model_D<-lmer(sqrt(df1$ROI.flock.modi) ~ (1|Farm)+df1$WORKERNO.x,data = df1, REML=0)# non significant
+summary(model_D)
+
+model_E<-lmer(sqrt(df1$ROI.flock.modi) ~ (1|Farm)+df1$experience,data = df1, REML=0)# non significant
+summary(model_E)
+
+model_F<-lmer(sqrt(df1$ROI.flock.modi) ~ (1|Farm)+df1$edu.2+df1$edu.3+df1$edu.4,data = df1, REML=0)# non significant
+summary(model_F)
+#Tranform flock size to per 100 chicken to get a bigger coefficient
+df1$Flock_size_per100<-df1$CHICKENTOTAL/100
+model_G<-lmer(sqrt(df1$ROI.flock.modi) ~ (1|Farm)+df1$Flock_size_per100,data = df1, REML=0)#  significant
+summary(model_G)
+#transform week_raising to month_raising to get a bigger coefficient
+df1$month_raising<-df1$Week_raising/4
+model_H<-lmer(sqrt(df1$ROI.flock.modi) ~ (1|Farm)+df1$month_raising,data = df1, REML=0)#non significant
+summary(model_H)
+
+#Tranform DOC cost to per 100 chicken to get a bigger coefficient
+
+model_Q<-lmer(sqrt(df1$ROI.flock.modi) ~ (1|Farm)+df1$DOC_price_106VND,data = df1, REML=0)#significatn
+summary(model_Q)
+
+#table(df1$feed_plus_ofeed)
+model_K<-lmer(sqrt(df1$ROI.flock.modi) ~ (1|Farm)+feed_plus_ofeed,data = df1, REML=0)# non sign
+summary(model_K)
+
+summary(df1$feedpricec_kg)
+df1$feedpricec_kg_per1000<-df1$feedpricec_kg/1000
+model_L<-lmer(sqrt(df1$ROI.flock.modi) ~ (1|Farm)+feedpricec_kg_per1000,data = df1, REML=0)#non
+summary(model_L)
+
+model_N<-lmer(sqrt(df1$ROI.flock.modi) ~ (1|Farm)+df1$X.week_with_medical_feed,data = df1, REML=0)# non significant
+summary(model_N)
+#Change per_week_anti with average_ADDkg
+#summary(df1$average_ADDkg_per.1000.chicken_week)
+#hist(df1$average_ADDkg_per.1000.chicken_week)
+df1$average_ADDkg_per.100.chicken_week_modi<-(df1$average_ADDkg_per.1000.chicken_week*10)+1
+#df1$log_ADD_kg<-log(df1$average_ADDkg_per.1000.chicken_week_modi)
+df1$sqrt_ADD_kg<-sqrt(df1$average_ADDkg_per.100.chicken_week_modi)
+
+hist(df1$sqrt_ADD_kg)
+model_0<-lmer(sqrt(df1$ROI.flock.modi) ~ (1|Farm)+df1$sqrt_ADD_kg,data = df1, REML=0)# non
+summary(model_0)
+
+#model_P<-lmer(sqrt(df1$ROI.flock.modi) ~ (1|Farm)+num_anti_used_high,data = df1, REML=0)#non
+#summary(model_P)
+df1$vac.high4<-ifelse(df1$type.vaccine.use>4,1,0)
+model_T<-lmer(sqrt(df1$ROI.flock.modi) ~ (1|Farm)+vac.high4,data = df1, REML=0)#significatn
+summary(model_T)
+
+model_R<-lmer(sqrt(df1$ROI.flock.modi) ~ (1|Farm)+df1$mortality.y,data = df1, REML=0)#significatn
+summary(model_R)
+table(df1$mortality_class)
+model_S<-lmer(sqrt(df1$ROI.flock.modi) ~ (1|Farm)+mortality_class,data = df1, REML=0)#significatn
+summary(model_S)
+
+#table(df1$type.vaccine.use,df1$vac.high)
+
+#model_T1<-lmer(sqrt(df1$ROI.flock.modi) ~ (1|Farm)+df1$type.vaccine.use,data = df1, REML=0)#significatn
+#summary(model_T1)
+model_U<-lmer(sqrt(df1$ROI.flock.modi) ~ (1|Farm)+Otherflock_class,data = df1, REML=0)#non significatn
+summary(model_U)
+
+model_X<-lmer(sqrt(df1$ROI.flock.modi) ~ (1|Farm)+Other_animal_class,data = df1, REML=0)#non significatn
+summary(model_X)
+
+#table(df1$ave_body_weight,df1$weight_hight)
+#model_Y<-lmer(sqrt(df1$ROI.flock.modi) ~ (1|Farm)+df1$weight_hight,data = df1, REML=0)#significant
+summary(model_Y)
+
+model_Z<-lmer(sqrt(df1$ROI.flock.modi) ~ (1|Farm)+new.purchase,data = df1, REML=0)#non significant
+summary(model_Z)
+
+#summary(df1$morta_end)
+#model_Z1<-lmer(sqrt(df1$ROI.flock.modi) ~ (1|Farm)+morta_end,data = df1, REML=0)#non significant
+#summary(model_Z1)
+#Separate analysis for average weight and ROI
+model_Z2<-lmer(sqrt(df1$ROI.flock.modi) ~ (1|Farm)+ave_body_weight,data = df1, REML=0)#non significant
+summary(model_Z2)
+
+#Multivariable model
+
+mod_multi1 <- lmer(sqrt(df1$ROI.flock.modi) ~ (1|Farm) + 
+                     df1$Flock_size_per100+
+                     df1$month_raising+
+                     df1$feed_plus_ofeed+
+                     df1$sqrt_ADD_kg+
+                     df1$mortality.y+
+                     df1$Otherflock_class, data=df1)
+summary(mod_multi1)
+#Selection of final model base on ANOVA test
+baseMod<-lmer(sqrt(df1$ROI.flock.modi) ~ (1|Farm) + 
+                df1$Flock_size_per100+
+                df1$month_raising+
+                df1$feed_plus_ofeed+
+                df1$sqrt_ADD_kg+
+                df1$mortality.y+
+                df1$Otherflock_class, data=df1)
+mod1<-lmer(sqrt(df1$ROI.flock.modi) ~ (1|Farm) + 
+             df1$Flock_size_per100+
+             df1$feed_plus_ofeed+
+             df1$sqrt_ADD_kg+
+             df1$mortality.y+
+             df1$Otherflock_class, data=df1) #obmit duration
+mod2<-lmer(sqrt(df1$ROI.flock.modi) ~ (1|Farm) + 
+             df1$Flock_size_per100+
+             df1$sqrt_ADD_kg+
+             df1$mortality.y+
+             df1$Otherflock_class, data=df1) #obmit duration and feed_plus_ofeed
+mod3<-lmer(sqrt(df1$ROI.flock.modi) ~ (1|Farm) + 
+             df1$Flock_size_per100+
+             df1$mortality.y+
+             df1$Otherflock_class, data=df1) #obmit duration, feed_plus_ofeed, ADD
+mod4<-lmer(sqrt(df1$ROI.flock.modi) ~ (1|Farm) + 
+             df1$Flock_size_per100+
+             df1$mortality.y, data=df1) #obmit duration, feed_plus_ofeed, ADD, otherflock class
+
+anova(mod4,mod3,mod2,mod1,baseMod)
+#Final model: model 4
+summary(mod4)
+summary(baseMod)
